@@ -58,3 +58,7 @@ logs/
 *.swo
 *~
 Thumbs.db
+
+.claude
+*.wav
+*.m4a

@@ -113,9 +113,34 @@ def synthesize():
         # Handle voice cloning with speaker_wav
         if speaker_wav:
             # Save uploaded file temporarily
-            with tempfile.NamedTemporaryFile(suffix='.wav', delete=False) as ref_file:
+            suffix = '.wav'
+            if speaker_wav.filename:
+                _, ext = os.path.splitext(speaker_wav.filename)
+                if ext:
+                    suffix = ext
+
+            with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as ref_file:
                 speaker_wav.save(ref_file.name)
                 ref_path = ref_file.name
+
+            # Convert non-wav files to wav using ffmpeg
+            if suffix.lower() != '.wav':
+                wav_ref_path = ref_path.replace(suffix, '.wav')
+                import subprocess
+                try:
+                    result = subprocess.run(
+                        ['ffmpeg', '-y', '-i', ref_path, '-ar', '22050', '-ac', '1', wav_ref_path],
+                        capture_output=True,
+                        text=True
+                    )
+                    if result.returncode != 0:
+                        logger.error(f"ffmpeg conversion failed: {result.stderr}")
+                        return jsonify({"error": f"Audio format conversion failed: {result.stderr}"}), 500
+                    os.unlink(ref_path)  # Remove original
+                    ref_path = wav_ref_path  # Use converted file
+                except FileNotFoundError:
+                    os.unlink(ref_path)
+                    return jsonify({"error": "ffmpeg not found. Please install ffmpeg for audio format conversion."}), 500
 
             try:
                 tts.tts_to_file(
@@ -167,6 +192,8 @@ def get_models():
 
         # Get all available models
         models = TTS().list_models()
+        if not isinstance(models, list):
+             models = models.list_models()
 
         # Filter to show only TTS models
         tts_models = [m for m in models if m.startswith('tts_models')]
